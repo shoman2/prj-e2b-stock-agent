@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    serverComponentsExternalPackages: ['@e2b/code-interpreter'],
+    serverComponentsExternalPackages: ['@e2b/code-interpreter', 'e2b'],
   },
 };
 

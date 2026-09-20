@@ -1,4 +1,3 @@
-import { Sandbox } from '@e2b/code-interpreter';
 import { ExecutionResult } from './types';
 
 // Mock 차트 이미지 SVG (E2B 키가 없거나 테스트 시뮬레이션용)
@@ -158,8 +157,9 @@ export async function runPythonInE2B(
   }
 
   // 2. 실제 E2B Code Interpreter 샌드박스 실행
-  let sandbox: Sandbox | null = null;
+  let sandbox: any = null;
   try {
+    const { Sandbox } = await import('@e2b/code-interpreter');
     // 샌드박스 생성
     sandbox = await Sandbox.create({
       apiKey,
