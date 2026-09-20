@@ -9,40 +9,48 @@ export interface LLMRequestParams {
 export async function callLLM({ model, apiKey, systemPrompt, userPrompt }: LLMRequestParams): Promise<string> {
   // 1. Google Gemini (기본 모델)
   if (model.includes('gemini')) {
-    // 쿼터 및 가용성이 검증된 Gemini Flash 모델 후보
-    const modelCandidates = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.7-flash'];
-
+    // 쿼터 및 가용성이 검증된 Gemini 모델 후보
+    const modelCandidates = ['gemini-3.6-flash', 'gemini-flash-latest'];
     let lastError = '';
 
     for (const cand of modelCandidates) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${cand}:generateContent?key=${apiKey}`;
+      // 503 일시적 스파이크 대응을 위해 2회 재시도
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${cand}:generateContent?key=${apiKey}`;
 
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-            generationConfig: { temperature: 0.2 },
-          }),
-        });
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
+            },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+              generationConfig: { temperature: 0.2 },
+            }),
+          });
 
-        if (res.ok) {
-          const data = await res.json();
-          return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (res.ok) {
+            const data = await res.json();
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          }
+
+          const errText = await res.text();
+          lastError = `Gemini (${cand}) HTTP ${res.status}: ${errText}`;
+
+          // 503(일시적 과부하)이면 1초 대기 후 재시도
+          if (res.status === 503) {
+            await new Promise((r) => setTimeout(r, 1200));
+            continue;
+          }
+
+          // 404이면 다른 모델 후보 시도
+          if (res.status === 404) break;
+        } catch (e: any) {
+          lastError = e.message;
         }
-
-        const errText = await res.text();
-        lastError = `Gemini (${cand}) HTTP ${res.status}: ${errText}`;
-        // 404면 다음 모델 후보 시도
-        if (res.status === 404) continue;
-        throw new Error(lastError);
-      } catch (e: any) {
-        lastError = e.message;
       }
     }
 
