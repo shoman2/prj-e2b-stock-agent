@@ -9,12 +9,8 @@ export interface LLMRequestParams {
 export async function callLLM({ model, apiKey, systemPrompt, userPrompt }: LLMRequestParams): Promise<string> {
   // 1. Google Gemini (기본 모델)
   if (model.includes('gemini')) {
-    // 모델명 매핑 후보 (2.5 -> 2.0 -> 1.5 폴백)
-    const modelCandidates = model.includes('2.5')
-      ? ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
-      : model.includes('pro')
-      ? ['gemini-1.5-pro', 'gemini-2.0-flash']
-      : ['gemini-1.5-flash', 'gemini-2.0-flash'];
+    // 사용 가능한 Gemini 모델 후보 (검증된 gemini-flash-latest 우선)
+    const modelCandidates = ['gemini-flash-latest', 'gemini-pro-latest', 'gemini-3.6-flash', 'gemini-2.5-pro'];
 
     let lastError = '';
 

@@ -9,7 +9,7 @@ import { ApiKeyModal } from '@/components/ApiKeyModal';
 
 export default function HomePage() {
   const [indices, setIndices] = useState<IndexInfo[]>(INDICES_METADATA);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-flash-latest');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [e2bKey, setE2bKey] = useState<string>('');
   const [modelKeys, setModelKeys] = useState<Record<string, string>>({});
@@ -17,7 +17,7 @@ export default function HomePage() {
   // 클라이언트 저장소에서 이전 설정 불러오기
   useEffect(() => {
     const storedE2bKey = localStorage.getItem('e2b_api_key') || '';
-    const storedModel = localStorage.getItem('selected_model') || 'gemini-2.5-flash';
+    const storedModel = localStorage.getItem('selected_model') || 'gemini-flash-latest';
     const storedModelKeys = localStorage.getItem('model_api_keys');
 
     setE2bKey(storedE2bKey);
