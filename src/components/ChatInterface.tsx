@@ -82,7 +82,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const currentModelInfo = AI_MODELS.find((m) => m.id === selectedModel) || AI_MODELS[0];
   const currentModelKey = modelKeys[currentModelInfo.provider.toLowerCase()] || '';
 
-  const hasAllKeys = Boolean(e2bApiKey && e2bApiKey.trim() !== '' && currentModelKey && currentModelKey.trim() !== '');
+  // Gemini 모델은 서버 환경변수에 기본 내장되어 있으므로 항상 사용 가능
+  const isDefaultGemini = currentModelInfo.provider === 'Google';
+  const hasAllKeys = isDefaultGemini || Boolean(e2bApiKey && e2bApiKey.trim() !== '' && currentModelKey && currentModelKey.trim() !== '');
 
   // 새 메시지 추가 시 스크롤 자동 이동
   const scrollToBottom = () => {
@@ -98,8 +100,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const textToSend = (overridePrompt || input).trim();
     if (!textToSend || loading) return;
 
-    // 만약 API 키가 전혀 설정되어 있지 않다면 즉시 설정 모달을 열어주고 안내
-    if (!e2bApiKey || e2bApiKey.trim() === '' || !currentModelKey || currentModelKey.trim() === '') {
+    // 만약 기본 내장 모델(Gemini)이 아니고 다른 모델(OpenAI/Claude)인데 키가 없다면 설정창 열기
+    if (!isDefaultGemini && (!currentModelKey || currentModelKey.trim() === '')) {
       onOpenSettings();
     }
 

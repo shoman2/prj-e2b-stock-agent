@@ -77,10 +77,10 @@ export interface AIModelOption {
 }
 
 export const AI_MODELS: AIModelOption[] = [
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'Google', badge: '기본 모델' },
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI', badge: 'Flagship' },
   { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', badge: 'Top Quant' },
   { id: 'gemini-1-5-pro', name: 'Gemini 1.5 Pro', provider: 'Google', badge: 'High Logic' },
-  { id: 'gemini-1-5-flash', name: 'Gemini 1.5 Flash', provider: 'Google', badge: 'Fast' },
   { id: 'deepseek-v3', name: 'DeepSeek-V3', provider: 'DeepSeek', badge: 'Cost Efficient' },
 ];
 

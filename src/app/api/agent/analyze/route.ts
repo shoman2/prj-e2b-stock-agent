@@ -4,17 +4,29 @@ import { callLLM, extractPythonCode } from '@/lib/llm-caller';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, model = 'gpt-4o', modelApiKey, e2bApiKey } = body;
+    const { prompt, model = 'gemini-2.5-flash', modelApiKey, e2bApiKey } = body;
 
-    const userE2bKey = e2bApiKey || process.env.E2B_API_KEY;
-    const userModelKey = modelApiKey;
+    // 1. E2B Key: 클라이언트 전달 키 -> 없으면 서버 환경변수(기본 심어둔 키) 자동 사용
+    const userE2bKey = (e2bApiKey && e2bApiKey.trim() !== '') ? e2bApiKey : process.env.E2B_API_KEY;
+
+    // 2. 모델 Key: 클라이언트 전달 키 -> 없으면 해당 모델의 환경변수 자동 사용
+    let userModelKey = modelApiKey;
+    if (!userModelKey || userModelKey.trim() === '') {
+      if (model.includes('gemini')) {
+        userModelKey = process.env.GEMINI_API_KEY;
+      } else if (model.startsWith('gpt')) {
+        userModelKey = process.env.OPENAI_API_KEY;
+      } else if (model.includes('claude')) {
+        userModelKey = process.env.ANTHROPIC_API_KEY;
+      }
+    }
 
     // 1. E2B API Key 누락 체크
     if (!userE2bKey || userE2bKey.trim() === '') {
       return NextResponse.json({
         success: false,
         error: 'MISSING_E2B_KEY',
-        agentInsight: '⚠️ **E2B API Key가 입력되지 않았습니다.**\n\n상단 우측 **[모델 & API 설정]** 버튼을 눌러 발급받으신 `E2B_API_KEY`를 입력해주세요.\n(E2B 클라우드 리눅스 MicroVM에서 Python 코드를 안전하게 실행하기 위해 필수입니다.)',
+        agentInsight: '⚠️ **E2B API Key가 설정되지 않았습니다.**\n\n상단 우측 **[모델 & API 설정]**에서 `E2B_API_KEY`를 입력해주세요.',
         charts: [],
         logs: { stdout: [], stderr: ['E2B_API_KEY is missing.'] },
         generatedCode: '',
@@ -27,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'MISSING_MODEL_KEY',
-        agentInsight: `⚠️ **${model} API Key가 입력되지 않았습니다.**\n\n상단 우측 **[모델 & API 설정]** 버튼을 눌러 선택하신 **${model}**의 API Key를 등록해주세요.\n(AI가 사용자의 질문을 분석하여 맞춤형 Python 코드를 동적으로 작성하기 위해 필요합니다.)`,
+        agentInsight: `⚠️ **${model} API Key가 설정되지 않았습니다.**\n\n상단 우측 **[모델 & API 설정]**에서 **${model}** API Key를 등록하거나, 기본 내장된 **Gemini 2.5 Flash** 모델을 선택해주세요.`,
         charts: [],
         logs: { stdout: [], stderr: [`${model} API key is missing.`] },
         generatedCode: '',
