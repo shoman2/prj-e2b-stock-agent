@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { Cpu, Key, ExternalLink, Bot, ChevronDown } from 'lucide-react';
 import { IndexInfo, AI_MODELS, AIModelOption } from '@/lib/types';
 
@@ -44,8 +45,31 @@ export const Navbar: React.FC<NavbarProps> = ({
         flexWrap: 'wrap',
         gap: 12
       }}>
-        {/* Left: Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Left: Brand Link to Home */}
+        <Link
+          href="/"
+          onClick={(e) => {
+            if (window.location.pathname === '/') {
+              window.location.href = '/';
+            }
+          }}
+          style={{
+            textDecoration: 'none',
+            color: 'inherit',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            cursor: 'pointer',
+            transition: 'opacity 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.opacity = '0.85';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.opacity = '1';
+          }}
+          title="홈 화면으로 이동"
+        >
           <div style={{
             width: 32,
             height: 32,
@@ -76,7 +100,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
           </div>
-        </div>
+        </Link>
 
         {/* Center: AI Model Selection Dropdown */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
