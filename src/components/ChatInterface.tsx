@@ -451,7 +451,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
                   {/* Message Content: ReactMarkdown with GFM */}
                   <div className="markdown-body">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        table: ({ node, ...props }) => (
+                          <div className="table-responsive-wrapper">
+                            <table {...props} />
+                          </div>
+                        ),
+                      }}
+                    >
                       {msg.content}
                     </ReactMarkdown>
                   </div>

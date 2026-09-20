@@ -140,9 +140,16 @@ You are given:
 1. The user's original query.
 2. The stdout execution output from running python data analysis in an actual E2B cloud sandbox on major stock indices.
 
-Write a clear, highly professional, insightful financial report in Korean (한국어).
-Use clean markdown headers (###), bullet points, and highlight key numbers in bold.
-Provide strategic interpretation, risk analysis, and actionable takeaways based strictly on the actual numbers returned from the sandbox.`;
+Write a clean, beautifully formatted, highly professional financial report in Korean (한국어).
+Structure your response with:
+### 1. 📊 핵심 요약 (Executive Summary)
+### 2. 📈 주요 지수 지표 비교 (Key Metrics Table)
+- Always provide a clean standard Markdown Table comparing indices/metrics (| 지수 | 현재가/종가 | 수익률(%) | 변동성/특이사항 | etc.)
+### 3. 🔍 심층 정량 분석 (Deep Dive Analysis)
+- Key drivers, cross-market correlations, divergence between indices. Highlight significant figures in **bold**.
+### 4. 💡 투자 전략 및 리스크 점검 (Takeaways & Risk)
+
+Strictly rely on the actual calculated numbers from the sandbox execution. Do NOT output raw unformatted text blocks.`;
 
     const combinedOutput = stdoutLogs.join('\n');
     const finalReport = await callLLM({
