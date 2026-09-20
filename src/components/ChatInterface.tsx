@@ -8,7 +8,8 @@ import {
   IndexInfo,
   AIModelOption,
   AI_MODELS,
-  ExecutionResult
+  ExecutionResult,
+  TokenUsage
 } from '@/lib/types';
 import {
   Send,
@@ -27,7 +28,9 @@ import {
   Grid,
   ShieldAlert,
   TrendingUp,
-  Gauge
+  Gauge,
+  Square,
+  Coins
 } from 'lucide-react';
 
 interface ChatInterfaceProps {
@@ -78,8 +81,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [modalImage, setModalImage] = useState<string | null>(null);
 
+  // 세션 전체 누적 토큰 사용량
+  const [sessionTokens, setSessionTokens] = useState<TokenUsage>({
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  });
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const currentModelInfo = AI_MODELS.find((m) => m.id === selectedModel) || AI_MODELS[0];
   const currentModelKey = modelKeys[currentModelInfo.provider.toLowerCase()] || '';
@@ -96,6 +107,23 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading]);
+
+  // 실행 정지 (Stop / Abort) 처리
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    const stopMessage: ChatMessage = {
+      id: `stopped-${Date.now()}`,
+      role: 'assistant',
+      content: '🛑 **사용자 요청으로 실행이 중단되었습니다.** (E2B 샌드박스 및 AI 생성 취소)',
+      model: currentModelInfo.name,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages((prev) => [...prev, stopMessage]);
+  };
 
   // 전송 처리
   const handleSend = async (overridePrompt?: string, presetId?: string) => {
@@ -118,10 +146,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setInput('');
     setLoading(true);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const res = await fetch('/api/agent/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           prompt: textToSend,
           model: currentModelInfo.id,
@@ -132,6 +164,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       const data = await res.json();
 
+      // 토큰 사용량 누적 갱신
+      if (data.tokenUsage) {
+        setSessionTokens((prev) => ({
+          promptTokens: prev.promptTokens + (data.tokenUsage.promptTokens || 0),
+          completionTokens: prev.completionTokens + (data.tokenUsage.completionTokens || 0),
+          totalTokens: prev.totalTokens + (data.tokenUsage.totalTokens || 0),
+        }));
+      }
+
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -141,6 +182,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         sandboxId: data.sandboxId,
         logs: data.logs,
         executionTimeMs: data.executionTimeMs,
+        tokenUsage: data.tokenUsage,
         model: currentModelInfo.name,
         isMock: false,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -148,6 +190,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        // handleStop()에서 중단 메시지를 생성했으므로 여기서는 무시
+        return;
+      }
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
         role: 'assistant',
@@ -157,12 +203,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
     }
   };
 
-  // 엔터키 핸들러
+  // 엔터키 및 Escape키 핸들러
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape' && loading) {
+      e.preventDefault();
+      handleStop();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -186,6 +238,61 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       margin: '0 auto',
       position: 'relative'
     }}>
+      {/* Top Status & Token Usage Header Bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '6px 16px',
+        borderBottom: '1px solid rgba(55, 65, 81, 0.4)',
+        background: 'rgba(15, 23, 42, 0.45)',
+        fontSize: '0.78rem',
+        color: '#94a3b8',
+        flexWrap: 'wrap',
+        gap: 8
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: loading ? '#f59e0b' : '#10b981',
+            boxShadow: loading ? '0 0 8px #f59e0b' : '0 0 6px #10b981',
+            transition: 'all 0.2s ease'
+          }} />
+          <span>
+            {loading ? (
+              <span style={{ color: '#f59e0b', fontWeight: 600 }}>E2B 연산 및 코드 실행 진행 중...</span>
+            ) : (
+              <span>엔진 준비 완료: <strong style={{ color: '#f1f5f9' }}>{currentModelInfo.name}</strong></span>
+            )}
+          </span>
+        </div>
+
+        {/* Real-time Session Token Usage Badge */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          background: 'rgba(30, 41, 59, 0.7)',
+          padding: '3px 12px',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid rgba(56, 189, 248, 0.25)',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+        }}>
+          <Coins size={13} color="#38bdf8" />
+          <span style={{ color: '#cbd5e1', fontSize: '0.76rem' }}>
+            세션 누적 토큰:
+          </span>
+          <strong style={{ color: '#38bdf8', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
+            {sessionTokens.totalTokens.toLocaleString()}
+          </strong>
+          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+            (입력 {sessionTokens.promptTokens.toLocaleString()} · 출력 {sessionTokens.completionTokens.toLocaleString()})
+          </span>
+        </div>
+      </div>
+
       {/* Messages Scroll Area */}
       <div style={{
         flex: 1,
@@ -379,6 +486,29 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         </span>
                       </>
                     )}
+                    {msg.tokenUsage && (
+                      <>
+                        <span>·</span>
+                        <span style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          color: '#38bdf8',
+                          background: 'rgba(56, 189, 248, 0.1)',
+                          padding: '1px 6px',
+                          borderRadius: 4,
+                          border: '1px solid rgba(56, 189, 248, 0.2)',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.72rem'
+                        }}>
+                          <Coins size={11} color="#38bdf8" />
+                          <span>{msg.tokenUsage.totalTokens.toLocaleString()} 토큰</span>
+                          <span style={{ color: '#94a3b8', fontSize: '0.67rem' }}>
+                            (입 {msg.tokenUsage.promptTokens} / 출 {msg.tokenUsage.completionTokens})
+                          </span>
+                        </span>
+                      </>
+                    )}
                     {msg.isMock && (
                       <span style={{ color: '#f59e0b', fontWeight: 600 }}>[Demo VM]</span>
                     )}
@@ -529,7 +659,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           );
         })}
 
-        {/* Loading Spinner Indicator */}
+        {/* Loading Spinner Indicator with Stop Button */}
         {loading && (
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <div style={{
@@ -545,20 +675,53 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <Bot size={17} color="#ffffff" />
             </div>
             <div style={{
-              padding: '14px 18px',
+              padding: '12px 18px',
               borderRadius: '4px 18px 18px 18px',
-              background: 'rgba(17, 24, 39, 0.75)',
-              border: '1px solid var(--border-color)',
+              background: 'rgba(17, 24, 39, 0.85)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
               display: 'flex',
               alignItems: 'center',
-              gap: 10,
+              justifyContent: 'space-between',
+              gap: 16,
               fontSize: '0.85rem',
-              color: '#38bdf8'
+              color: '#38bdf8',
+              maxWidth: '85%'
             }}>
-              <span className="pulse-dot" style={{ backgroundColor: '#38bdf8' }} />
-              <span>
-                <strong>{currentModelInfo.name}</strong>가 E2B 클라우드 샌드박스에서 파이썬 코드를 실행 중입니다...
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="pulse-dot" style={{ backgroundColor: '#38bdf8' }} />
+                <span>
+                  <strong>{currentModelInfo.name}</strong>가 E2B 샌드박스에서 파이썬 코드를 실행 중입니다...
+                </span>
+              </div>
+              <button
+                onClick={handleStop}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  color: '#f87171',
+                  borderRadius: 6,
+                  padding: '4px 10px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  flexShrink: 0
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(239, 68, 68, 0.25)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(239, 68, 68, 0.15)';
+                }}
+                title="분석 실행 중단"
+              >
+                <Square size={11} fill="#f87171" />
+                <span>정지</span>
+              </button>
             </div>
           </div>
         )}
@@ -593,8 +756,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={`${currentModelInfo.name}에게 5대 지수 분석 요청 (예: 최근 3달 코스피와 나스닥 상관계수 구해줘)...`}
-            disabled={loading}
+            placeholder={loading ? "분석이 진행 중입니다... (Esc 또는 정지 버튼으로 중단 가능)" : `${currentModelInfo.name}에게 5대 지수 분석 요청 (예: 최근 3달 코스피와 나스닥 상관계수 구해줘)...`}
             style={{
               flex: 1,
               background: 'transparent',
@@ -610,21 +772,51 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             }}
           />
 
-          <button
-            onClick={() => handleSend()}
-            disabled={loading || !input.trim()}
-            className="btn-primary"
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: '50%',
-              padding: 0,
-              justifyContent: 'center',
-              flexShrink: 0
-            }}
-          >
-            <Send size={16} />
-          </button>
+          {loading ? (
+            <button
+              onClick={handleStop}
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: '50%',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                border: 'none',
+                color: '#ffffff',
+                cursor: 'pointer',
+                boxShadow: '0 0 14px rgba(239, 68, 68, 0.6)',
+                transition: 'all 0.15s ease'
+              }}
+              title="분석 실행 정지 (Stop)"
+            >
+              <Square size={14} fill="#ffffff" />
+            </button>
+          ) : (
+            <button
+              onClick={() => handleSend()}
+              disabled={!input.trim()}
+              className="btn-primary"
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: '50%',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                cursor: !input.trim() ? 'not-allowed' : 'pointer',
+                opacity: !input.trim() ? 0.4 : 1,
+              }}
+              title="메시지 전송"
+            >
+              <Send size={16} />
+            </button>
+          )}
         </div>
 
         <div style={{

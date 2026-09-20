@@ -38,6 +38,12 @@ export interface AnalysisPreset {
   pythonCode: string;
 }
 
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 export interface ExecutionResult {
   success: boolean;
   isMock?: boolean;
@@ -49,6 +55,7 @@ export interface ExecutionResult {
   };
   generatedCode: string;
   executionTimeMs: number;
+  tokenUsage?: TokenUsage;
   stats?: Record<string, any>;
   error?: string;
 }
@@ -65,6 +72,7 @@ export interface ChatMessage {
     stderr: string[];
   };
   executionTimeMs?: number;
+  tokenUsage?: TokenUsage;
   model?: string;
   isMock?: boolean;
   timestamp: string;

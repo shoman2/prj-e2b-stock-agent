@@ -75,14 +75,14 @@ CRITICAL CODING GUIDELINES:
    plt.show()
 6. Output ONLY executable Python code within \`\`\`python code block. No explanation outside the code block.`;
 
-    const rawGeneratedCode = await callLLM({
+    const codeGenResult = await callLLM({
       model,
       apiKey: userModelKey,
       systemPrompt: codeGenSystemPrompt,
       userPrompt: `User question: "${prompt}". Generate Python code to analyze and plot this.`,
     });
 
-    const pythonCode = extractPythonCode(rawGeneratedCode);
+    const pythonCode = extractPythonCode(codeGenResult.text);
 
     // 4. 2단계: 실제 E2B 클라우드 샌드박스(MicroVM) 생성 및 코드 실행
     let sandbox: any = null;
@@ -152,7 +152,7 @@ Structure your response with:
 Strictly rely on the actual calculated numbers from the sandbox execution. Do NOT output raw unformatted text blocks.`;
 
     const combinedOutput = stdoutLogs.join('\n');
-    const finalReport = await callLLM({
+    const reportResult = await callLLM({
       model,
       apiKey: userModelKey,
       systemPrompt: reportSystemPrompt,
@@ -160,11 +160,16 @@ Strictly rely on the actual calculated numbers from the sandbox execution. Do NO
     });
 
     const executionTimeMs = Date.now() - startTime;
+    const tokenUsage = {
+      promptTokens: (codeGenResult.usage?.promptTokens || 0) + (reportResult.usage?.promptTokens || 0),
+      completionTokens: (codeGenResult.usage?.completionTokens || 0) + (reportResult.usage?.completionTokens || 0),
+      totalTokens: (codeGenResult.usage?.totalTokens || 0) + (reportResult.usage?.totalTokens || 0),
+    };
 
     return NextResponse.json({
       success: true,
       isMock: false,
-      agentInsight: finalReport,
+      agentInsight: reportResult.text,
       charts,
       sandboxId,
       logs: {
@@ -173,6 +178,7 @@ Strictly rely on the actual calculated numbers from the sandbox execution. Do NO
       },
       generatedCode: pythonCode,
       executionTimeMs,
+      tokenUsage,
       model,
     });
   } catch (error: any) {

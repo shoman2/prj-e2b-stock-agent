@@ -5,8 +5,19 @@ export interface LLMRequestParams {
   userPrompt: string;
 }
 
+export interface LLMUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface LLMResult {
+  text: string;
+  usage: LLMUsage;
+}
+
 // 직접 REST API 호출 (경량화 및 모든 프로바이더 지원)
-export async function callLLM({ model, apiKey, systemPrompt, userPrompt }: LLMRequestParams): Promise<string> {
+export async function callLLM({ model, apiKey, systemPrompt, userPrompt }: LLMRequestParams): Promise<LLMResult> {
   // 1. Google Gemini (기본 모델)
   if (model.includes('gemini')) {
     // 쿼터 및 가용성이 검증된 Gemini 모델 후보
@@ -34,7 +45,15 @@ export async function callLLM({ model, apiKey, systemPrompt, userPrompt }: LLMRe
 
           if (res.ok) {
             const data = await res.json();
-            return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const promptTokens = data.usageMetadata?.promptTokenCount ?? Math.ceil((systemPrompt.length + userPrompt.length) / 3.5);
+            const completionTokens = data.usageMetadata?.candidatesTokenCount ?? Math.ceil(text.length / 3.5);
+            const totalTokens = data.usageMetadata?.totalTokenCount ?? (promptTokens + completionTokens);
+
+            return {
+              text,
+              usage: { promptTokens, completionTokens, totalTokens }
+            };
           }
 
           const errText = await res.text();
@@ -85,7 +104,15 @@ export async function callLLM({ model, apiKey, systemPrompt, userPrompt }: LLMRe
     }
 
     const data = await res.json();
-    return data.choices?.[0]?.message?.content || '';
+    const text = data.choices?.[0]?.message?.content || '';
+    const promptTokens = data.usage?.prompt_tokens ?? Math.ceil((systemPrompt.length + userPrompt.length) / 3.5);
+    const completionTokens = data.usage?.completion_tokens ?? Math.ceil(text.length / 3.5);
+    const totalTokens = data.usage?.total_tokens ?? (promptTokens + completionTokens);
+
+    return {
+      text,
+      usage: { promptTokens, completionTokens, totalTokens }
+    };
   }
 
   // 3. Anthropic (Claude)
@@ -111,7 +138,15 @@ export async function callLLM({ model, apiKey, systemPrompt, userPrompt }: LLMRe
     }
 
     const data = await res.json();
-    return data.content?.[0]?.text || '';
+    const text = data.content?.[0]?.text || '';
+    const promptTokens = data.usage?.input_tokens ?? Math.ceil((systemPrompt.length + userPrompt.length) / 3.5);
+    const completionTokens = data.usage?.output_tokens ?? Math.ceil(text.length / 3.5);
+    const totalTokens = promptTokens + completionTokens;
+
+    return {
+      text,
+      usage: { promptTokens, completionTokens, totalTokens }
+    };
   }
 
   throw new Error(`지원하지 않는 모델입니다: ${model}`);
