@@ -53,8 +53,42 @@ export interface ExecutionResult {
   error?: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  charts?: string[];
+  generatedCode?: string;
+  logs?: {
+    stdout: string[];
+    stderr: string[];
+  };
+  executionTimeMs?: number;
+  model?: string;
+  isMock?: boolean;
+  timestamp: string;
+}
+
+export interface AIModelOption {
+  id: string;
+  name: string;
+  provider: 'OpenAI' | 'Anthropic' | 'Google' | 'DeepSeek';
+  badge: string;
+}
+
+export const AI_MODELS: AIModelOption[] = [
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI', badge: 'Flagship' },
+  { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', badge: 'Top Quant' },
+  { id: 'gemini-1-5-pro', name: 'Gemini 1.5 Pro', provider: 'Google', badge: 'High Logic' },
+  { id: 'gemini-1-5-flash', name: 'Gemini 1.5 Flash', provider: 'Google', badge: 'Fast' },
+  { id: 'deepseek-v3', name: 'DeepSeek-V3', provider: 'DeepSeek', badge: 'Cost Efficient' },
+];
+
 export interface ApiConfig {
   e2bApiKey?: string;
-  llmProvider: 'gemini' | 'openai' | 'mock';
-  llmApiKey?: string;
+  selectedModel: string;
+  openaiApiKey?: string;
+  anthropicApiKey?: string;
+  geminiApiKey?: string;
 }
+

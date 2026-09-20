@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Key, Shield, ExternalLink, Check, AlertCircle } from 'lucide-react';
+import { X, Key, Shield, ExternalLink, Check, Bot, Settings2 } from 'lucide-react';
+import { AI_MODELS } from '@/lib/types';
 
 interface ApiKeyModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSaveKeys: (e2bKey: string) => void;
+  onSaveKeys: (config: { e2bKey: string; modelKeys: Record<string, string> }) => void;
   currentE2bKey?: string;
+  selectedModel: string;
 }
 
 export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
@@ -15,34 +17,42 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   onClose,
   onSaveKeys,
   currentE2bKey = '',
+  selectedModel,
 }) => {
   const [e2bKey, setE2bKey] = useState(currentE2bKey);
+  const [modelKeys, setModelKeys] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setE2bKey(currentE2bKey);
-  }, [currentE2bKey]);
+    const storedModelKeys = localStorage.getItem('model_api_keys');
+    if (storedModelKeys) {
+      try {
+        setModelKeys(JSON.parse(storedModelKeys));
+      } catch (e) {}
+    }
+  }, [currentE2bKey, isOpen]);
 
   if (!isOpen) return null;
 
+  const currentModel = AI_MODELS.find((m) => m.id === selectedModel) || AI_MODELS[0];
+
   const handleSave = () => {
-    onSaveKeys(e2bKey.trim());
+    onSaveKeys({ e2bKey: e2bKey.trim(), modelKeys });
+    localStorage.setItem('model_api_keys', JSON.stringify(modelKeys));
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
       onClose();
-    }, 800);
+    }, 700);
   };
 
   return (
     <div style={{
       position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(3, 7, 18, 0.75)',
-      backdropFilter: 'blur(8px)',
+      inset: 0,
+      backgroundColor: 'rgba(3, 7, 18, 0.8)',
+      backdropFilter: 'blur(10px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -50,11 +60,12 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
       padding: 16
     }}>
       <div className="glass-panel" style={{
-        maxWidth: 520,
+        maxWidth: 540,
         width: '100%',
-        padding: '24px 26px',
+        padding: '24px 28px',
         position: 'relative',
-        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7)',
+        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8)',
+        borderRadius: 'var(--radius-lg)',
         border: '1px solid rgba(56, 189, 248, 0.3)'
       }}>
         {/* Close Button */}
@@ -66,18 +77,18 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             right: 18,
             background: 'transparent',
             border: 'none',
-            color: '#94a3b8',
+            color: '#9ca3af',
             cursor: 'pointer'
           }}
         >
           <X size={18} />
         </button>
 
-        {/* Modal Title */}
+        {/* Modal Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <div style={{
-            width: 34,
-            height: 34,
+            width: 36,
+            height: 36,
             borderRadius: 'var(--radius-sm)',
             background: 'rgba(56, 189, 248, 0.15)',
             border: '1px solid rgba(56, 189, 248, 0.3)',
@@ -85,56 +96,49 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            <Key size={18} color="#38bdf8" />
+            <Settings2 size={20} color="#38bdf8" />
           </div>
           <div>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
-              E2B 환경설정 및 API 키
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#f9fafb' }}>
+              모델 및 E2B 환경 설정
             </h3>
-            <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              E2B 클라우드 샌드박스에서 파이썬 코드를 실행하기 위한 API 키를 설정합니다.
+            <p style={{ fontSize: '0.78rem', color: '#9ca3af' }}>
+              현재 선택된 모델: <strong>{currentModel.name} ({currentModel.provider})</strong>
             </p>
           </div>
         </div>
 
-        {/* Info Box */}
+        {/* Security Notice */}
         <div style={{
-          background: 'rgba(15, 23, 42, 0.7)',
+          background: 'rgba(15, 23, 42, 0.65)',
           border: '1px solid var(--border-color)',
           borderRadius: 'var(--radius-sm)',
-          padding: '12px 14px',
-          marginBottom: 18,
-          fontSize: '0.78rem',
+          padding: '10px 14px',
+          marginBottom: 16,
+          fontSize: '0.76rem',
           color: '#cbd5e1',
           lineHeight: 1.5
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#38bdf8', fontWeight: 600, marginBottom: 4 }}>
-            <Shield size={14} />
-            <span>로컬 보안 브라우저 저장소 안내</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#38bdf8', fontWeight: 600, marginBottom: 3 }}>
+            <Shield size={13} />
+            <span>로컬 브라우저 보안 저장 안내</span>
           </div>
-          입력하신 키는 서버에 영구 보관되지 않고 브라우저의 로컬 세션에만 임시 저장됩니다. 키를 입력하지 않으셔도 <strong>데모 시뮬레이션 모드</strong>로 모든 기능을 체험하실 수 있습니다.
+          API 키는 브라우저 로컬 저장소에만 보관됩니다. 키를 입력하지 않아도 <strong>데모 샌드박스 모드</strong>로 모든 분석 기능을 즉시 이용하실 수 있습니다.
         </div>
 
         {/* E2B API Key Input */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f8fafc' }}>
-              E2B API Key (E2B_API_KEY)
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f9fafb' }}>
+              E2B API Key (클라우드 MicroVM 샌드박스)
             </label>
             <a
               href="https://console.e2b.dev/?tab=keys"
               target="_blank"
               rel="noreferrer"
-              style={{
-                fontSize: '0.72rem',
-                color: '#38bdf8',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                textDecoration: 'none'
-              }}
+              style={{ fontSize: '0.72rem', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 3, textDecoration: 'none' }}
             >
-              <span>E2B 콘솔에서 키 발급</span>
+              <span>E2B 키 발급</span>
               <ExternalLink size={11} />
             </a>
           </div>
@@ -145,11 +149,40 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             placeholder="e2b_******************************"
             style={{
               width: '100%',
-              padding: '10px 14px',
+              padding: '9px 12px',
               borderRadius: 'var(--radius-sm)',
               background: 'rgba(15, 23, 42, 0.9)',
               border: '1px solid var(--border-color)',
-              color: '#f8fafc',
+              color: '#f9fafb',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.82rem',
+              outline: 'none'
+            }}
+          />
+        </div>
+
+        {/* Selected Model API Key Input */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f9fafb' }}>
+              {currentModel.provider} API Key (선택사항)
+            </label>
+            <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
+              미입력 시 기본 내장 에이전트로 자동 연동
+            </span>
+          </div>
+          <input
+            type="password"
+            value={modelKeys[currentModel.provider.toLowerCase()] || ''}
+            onChange={(e) => setModelKeys({ ...modelKeys, [currentModel.provider.toLowerCase()]: e.target.value })}
+            placeholder={`sk-... (${currentModel.provider} Key)`}
+            style={{
+              width: '100%',
+              padding: '9px 12px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(15, 23, 42, 0.9)',
+              border: '1px solid var(--border-color)',
+              color: '#f9fafb',
               fontFamily: 'var(--font-mono)',
               fontSize: '0.82rem',
               outline: 'none'
