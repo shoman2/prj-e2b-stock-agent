@@ -136,6 +136,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         content: data.agentInsight,
         charts: data.charts,
         generatedCode: data.generatedCode,
+        sandboxId: data.sandboxId,
         logs: data.logs,
         executionTimeMs: data.executionTimeMs,
         model: currentModelInfo.name,
@@ -361,6 +362,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         </span>
                       </>
                     )}
+                    {msg.sandboxId && (
+                      <>
+                        <span>·</span>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          color: '#34d399',
+                          background: 'rgba(16, 185, 129, 0.1)',
+                          padding: '1px 6px',
+                          borderRadius: 4,
+                          border: '1px solid rgba(16, 185, 129, 0.25)'
+                        }}>
+                          E2B: {msg.sandboxId}
+                        </span>
+                      </>
+                    )}
                     {msg.isMock && (
                       <span style={{ color: '#f59e0b', fontWeight: 600 }}>[Demo VM]</span>
                     )}
@@ -382,7 +398,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     <details style={{ marginBottom: 14 }}>
                       <summary>
                         <Terminal size={14} color="#38bdf8" />
-                        <span>⚡ E2B Sandbox 실행 파이썬 코드 및 콘솔 로그 보기</span>
+                        <span>⚡ E2B Sandbox ({msg.sandboxId ? `MicroVM: ${msg.sandboxId}` : 'Cloud VM'}) 코드 및 실행 로그 보기</span>
                       </summary>
                       <div style={{ padding: '12px 14px', background: '#090d16', borderTop: '1px solid var(--border-color)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>

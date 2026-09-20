@@ -4,7 +4,7 @@ import { callLLM, extractPythonCode } from '@/lib/llm-caller';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, model = 'gemini-2.5-flash', modelApiKey, e2bApiKey } = body;
+    const { prompt, model = 'gemini-flash-latest', modelApiKey, e2bApiKey } = body;
 
     // 1. E2B Key: 클라이언트 전달 키 -> 없으면 서버 환경변수(기본 심어둔 키) 자동 사용
     const userE2bKey = (e2bApiKey && e2bApiKey.trim() !== '') ? e2bApiKey : process.env.E2B_API_KEY;
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'MISSING_MODEL_KEY',
-        agentInsight: `⚠️ **${model} API Key가 설정되지 않았습니다.**\n\n상단 우측 **[모델 & API 설정]**에서 **${model}** API Key를 등록하거나, 기본 내장된 **Gemini 2.5 Flash** 모델을 선택해주세요.`,
+        agentInsight: `⚠️ **${model} API Key가 설정되지 않았습니다.**\n\n상단 우측 **[모델 & API 설정]**에서 **${model}** API Key를 등록하거나, 기본 내장된 **Google Gemini** 모델을 선택해주세요.`,
         charts: [],
         logs: { stdout: [], stderr: [`${model} API key is missing.`] },
         generatedCode: '',
@@ -60,17 +60,20 @@ The index ticker symbols for yfinance are:
 - KOSPI: '^KS11'
 - KOSDAQ: '^KQ11'
 
-Rules:
+CRITICAL CODING GUIDELINES:
 1. Always import yfinance as yf, pandas as pd, numpy as np, matplotlib.pyplot as plt.
-2. Download historical data using yf.download() with period='3mo' or '6mo' or '1y' based on the user question.
-3. Clean missing values with .ffill().dropna().
-4. Print clear, formatted statistics and tables using print() so they appear in stdout.
-5. Create a visually polished dark-background plot using matplotlib / seaborn:
+2. To download data reliably, use yf.Ticker(symbol).history(period='3mo')['Close'] or yf.download(tickers, period='3mo', progress=False, threads=False)['Close'].
+3. Handle missing values with .ffill().dropna().
+4. Calculate required statistics (returns, correlation, volatility, MDD, RSI, etc.) and print detailed results clearly using print() so they are visible in stdout.
+5. Create a visually polished dark-background plot using matplotlib:
    plt.style.use('dark_background')
+   fig, ax = plt.subplots(figsize=(10, 5), dpi=120)
    fig.patch.set_facecolor('#0f172a')
+   ax.set_facecolor('#1e293b')
+   # ... plotting code ...
    plt.tight_layout()
    plt.show()
-6. Output ONLY executable Python code within \`\`\`python code block. No explanations or chit-chat.`;
+6. Output ONLY executable Python code within \`\`\`python code block. No explanation outside the code block.`;
 
     const rawGeneratedCode = await callLLM({
       model,
@@ -83,21 +86,34 @@ Rules:
 
     // 4. 2단계: 실제 E2B 클라우드 샌드박스(MicroVM) 생성 및 코드 실행
     let sandbox: any = null;
-    let stdoutLogs: string[] = [];
-    let stderrLogs: string[] = [];
+    let sandboxId = '';
+    const stdoutLogs: string[] = [];
+    const stderrLogs: string[] = [];
     const charts: string[] = [];
 
     try {
       const { Sandbox } = await import('@e2b/code-interpreter');
       sandbox = await Sandbox.create({
         apiKey: userE2bKey,
-        timeoutMs: 60_000,
+        timeoutMs: 90_000,
       });
+      sandboxId = sandbox.sandboxId;
 
+      // E2B 기본 환경에 yfinance 설치
+      await sandbox.commands.run('pip install -q yfinance');
+
+      // AI가 생성한 파이썬 퀀트 코드 실행
       const execution = await sandbox.runCode(pythonCode);
 
       if (execution.logs?.stdout) stdoutLogs.push(...execution.logs.stdout);
       if (execution.logs?.stderr) stderrLogs.push(...execution.logs.stderr);
+
+      if (execution.error) {
+        stderrLogs.push(`[ExecutionError] ${execution.error.name}: ${execution.error.value}`);
+        if (execution.error.traceback) {
+          stderrLogs.push(execution.error.traceback);
+        }
+      }
 
       if (execution.results && execution.results.length > 0) {
         for (const res of execution.results) {
@@ -122,7 +138,7 @@ Rules:
     const reportSystemPrompt = `You are a chief market strategist and quantitative financial analyst.
 You are given:
 1. The user's original query.
-2. The stdout execution output from running python data analysis in a cloud sandbox on 5 major stock indices (S&P 500, NASDAQ, Russell 2000, KOSPI, KOSDAQ).
+2. The stdout execution output from running python data analysis in an actual E2B cloud sandbox on major stock indices.
 
 Write a clear, highly professional, insightful financial report in Korean (한국어).
 Use clean markdown headers (###), bullet points, and highlight key numbers in bold.
@@ -133,7 +149,7 @@ Provide strategic interpretation, risk analysis, and actionable takeaways based 
       model,
       apiKey: userModelKey,
       systemPrompt: reportSystemPrompt,
-      userPrompt: `User Query: "${prompt}"\n\nExecution stdout results from E2B Sandbox:\n${combinedOutput || '(No stdout text, chart generated)'}`,
+      userPrompt: `User Query: "${prompt}"\n\nExecution stdout results from E2B Sandbox:\n${combinedOutput || '(Code executed, chart generated)'}`,
     });
 
     const executionTimeMs = Date.now() - startTime;
@@ -143,6 +159,7 @@ Provide strategic interpretation, risk analysis, and actionable takeaways based 
       isMock: false,
       agentInsight: finalReport,
       charts,
+      sandboxId,
       logs: {
         stdout: stdoutLogs,
         stderr: stderrLogs,
@@ -159,11 +176,12 @@ Provide strategic interpretation, risk analysis, and actionable takeaways based 
         error: error.message || 'Execution error',
         agentInsight: `### ❌ 실행 중 오류가 발생했습니다.\n\n${error.message || error}`,
         charts: [],
+        sandboxId: '',
         logs: { stdout: [], stderr: [String(error)] },
         generatedCode: '',
         executionTimeMs: 0,
       },
-      { status: 200 } // 프론트엔드에서 파싱할 수 있도록 200으로 반환
+      { status: 200 }
     );
   }
 }

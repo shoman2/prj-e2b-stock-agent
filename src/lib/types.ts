@@ -59,6 +59,7 @@ export interface ChatMessage {
   content: string;
   charts?: string[];
   generatedCode?: string;
+  sandboxId?: string;
   logs?: {
     stdout: string[];
     stderr: string[];
