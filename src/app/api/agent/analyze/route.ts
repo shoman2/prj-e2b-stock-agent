@@ -1,113 +1,157 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ANALYSIS_PRESETS } from '@/lib/presets';
-import { runPythonInE2B } from '@/lib/e2b-runner';
-
-// 자연어 질문에서 최적의 파이썬 코드 및 분석 프리셋 매핑
-function resolveCodeForPrompt(prompt: string, presetId?: string): { code: string; resolvedPresetId: string } {
-  if (presetId) {
-    const found = ANALYSIS_PRESETS.find(p => p.id === presetId);
-    if (found) return { code: found.pythonCode, resolvedPresetId: presetId };
-  }
-
-  const p = prompt.toLowerCase();
-
-  if (p.includes('상관') || p.includes('correlation') || p.includes('히트맵') || p.includes('동조화')) {
-    const preset = ANALYSIS_PRESETS.find(pr => pr.id === 'correlation')!;
-    return { code: preset.pythonCode, resolvedPresetId: 'correlation' };
-  }
-
-  if (p.includes('변동') || p.includes('mdd') || p.includes('낙폭') || p.includes('리스크') || p.includes('위험')) {
-    const preset = ANALYSIS_PRESETS.find(pr => pr.id === 'volatility_mdd')!;
-    return { code: preset.pythonCode, resolvedPresetId: 'volatility_mdd' };
-  }
-
-  if (p.includes('러셀') || p.includes('소형') || p.includes('대형') || p.includes('상대') || p.includes('비율')) {
-    const preset = ANALYSIS_PRESETS.find(pr => pr.id === 'relative_strength')!;
-    return { code: preset.pythonCode, resolvedPresetId: 'relative_strength' };
-  }
-
-  if (p.includes('rsi') || p.includes('이평선') || p.includes('이동평균') || p.includes('기술적') || p.includes('과매수')) {
-    const preset = ANALYSIS_PRESETS.find(pr => pr.id === 'rsi_scanner')!;
-    return { code: preset.pythonCode, resolvedPresetId: 'rsi_scanner' };
-  }
-
-  // 기본 커스텀 Python 코드 (5개 지수 다운로드 및 누적 수익률 비교 차트)
-  const defaultCode = `import yfinance as yf
-import pandas as pd
-import matplotlib.pyplot as plt
-
-tickers = {
-    'S&P 500': '^GSPC',
-    'NASDAQ': '^IXIC',
-    'Russell 2000': '^RUT',
-    'KOSPI': '^KS11',
-    'KOSDAQ': '^KQ11'
-}
-
-print("== [E2B Sandbox] 5대 주요 주가지수 6개월 시세 분석 ==")
-df = yf.download(list(tickers.values()), period='6mo', progress=False)['Close']
-df = df.rename(columns={v: k for k, v in tickers.items()}).ffill().dropna()
-
-# 누적 수익률(%) 정규화
-normalized = (df / df.iloc[0] - 1) * 100
-
-print("\\n[최근 6개월 누적 수익률 현황]")
-for col in normalized.columns:
-    print(f"{col:>12}: {normalized[col].iloc[-1]:>+6.2f}%")
-
-plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(9, 4.8), dpi=120)
-fig.patch.set_facecolor('#0f172a')
-ax.set_facecolor('#0f172a')
-
-colors = {'S&P 500': '#38bdf8', 'NASDAQ': '#818cf8', 'Russell 2000': '#34d399', 'KOSPI': '#f43f5e', 'KOSDAQ': '#fbbf24'}
-for col in normalized.columns:
-    ax.plot(normalized.index, normalized[col], label=f"{col} ({normalized[col].iloc[-1]:+.1f}%)", color=colors.get(col, '#94a3b8'), linewidth=2)
-
-ax.axhline(0, color='#64748b', linestyle='--', alpha=0.5)
-ax.set_title("5 Major Indices Cumulative Return (6 Months)", fontsize=13, color='#f8fafc', pad=12)
-ax.set_ylabel("Return (%)", color='#94a3b8')
-ax.grid(True, linestyle=':', alpha=0.3, color='#334155')
-ax.legend(facecolor='#1e293b', edgecolor='#334155', labelcolor='#e2e8f0', loc='upper left')
-
-plt.tight_layout()
-plt.show()
-`;
-
-  return { code: defaultCode, resolvedPresetId: 'custom' };
-}
+import { callLLM, extractPythonCode } from '@/lib/llm-caller';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, presetId, customCode, e2bApiKey } = body;
+    const { prompt, model = 'gpt-4o', modelApiKey, e2bApiKey } = body;
 
-    let targetCode = customCode;
-    let resolvedPreset = presetId;
+    const userE2bKey = e2bApiKey || process.env.E2B_API_KEY;
+    const userModelKey = modelApiKey;
 
-    if (!targetCode) {
-      const resolved = resolveCodeForPrompt(prompt || '', presetId);
-      targetCode = resolved.code;
-      resolvedPreset = resolved.resolvedPresetId;
+    // 1. E2B API Key 누락 체크
+    if (!userE2bKey || userE2bKey.trim() === '') {
+      return NextResponse.json({
+        success: false,
+        error: 'MISSING_E2B_KEY',
+        agentInsight: '⚠️ **E2B API Key가 입력되지 않았습니다.**\n\n상단 우측 **[모델 & API 설정]** 버튼을 눌러 발급받으신 `E2B_API_KEY`를 입력해주세요.\n(E2B 클라우드 리눅스 MicroVM에서 Python 코드를 안전하게 실행하기 위해 필수입니다.)',
+        charts: [],
+        logs: { stdout: [], stderr: ['E2B_API_KEY is missing.'] },
+        generatedCode: '',
+        executionTimeMs: 0,
+      });
     }
 
-    // E2B 샌드박스에서 실행
-    const result = await runPythonInE2B(targetCode, e2bApiKey, resolvedPreset);
+    // 2. 모델 API Key 누락 체크
+    if (!userModelKey || userModelKey.trim() === '') {
+      return NextResponse.json({
+        success: false,
+        error: 'MISSING_MODEL_KEY',
+        agentInsight: `⚠️ **${model} API Key가 입력되지 않았습니다.**\n\n상단 우측 **[모델 & API 설정]** 버튼을 눌러 선택하신 **${model}**의 API Key를 등록해주세요.\n(AI가 사용자의 질문을 분석하여 맞춤형 Python 코드를 동적으로 작성하기 위해 필요합니다.)`,
+        charts: [],
+        logs: { stdout: [], stderr: [`${model} API key is missing.`] },
+        generatedCode: '',
+        executionTimeMs: 0,
+      });
+    }
 
-    return NextResponse.json(result);
+    const startTime = Date.now();
+
+    // 3. 1단계: LLM 호출하여 질문에 맞는 파이썬 퀀트 코드 동적 생성
+    const codeGenSystemPrompt = `You are an expert quantitative finance data analyst and Python programmer.
+Your job is to write a standalone, executable Python script to answer the user's financial question about the 5 major stock market indices.
+
+The index ticker symbols for yfinance are:
+- S&P 500: '^GSPC'
+- NASDAQ Composite: '^IXIC'
+- Russell 2000: '^RUT'
+- KOSPI: '^KS11'
+- KOSDAQ: '^KQ11'
+
+Rules:
+1. Always import yfinance as yf, pandas as pd, numpy as np, matplotlib.pyplot as plt.
+2. Download historical data using yf.download() with period='3mo' or '6mo' or '1y' based on the user question.
+3. Clean missing values with .ffill().dropna().
+4. Print clear, formatted statistics and tables using print() so they appear in stdout.
+5. Create a visually polished dark-background plot using matplotlib / seaborn:
+   plt.style.use('dark_background')
+   fig.patch.set_facecolor('#0f172a')
+   plt.tight_layout()
+   plt.show()
+6. Output ONLY executable Python code within \`\`\`python code block. No explanations or chit-chat.`;
+
+    const rawGeneratedCode = await callLLM({
+      model,
+      apiKey: userModelKey,
+      systemPrompt: codeGenSystemPrompt,
+      userPrompt: `User question: "${prompt}". Generate Python code to analyze and plot this.`,
+    });
+
+    const pythonCode = extractPythonCode(rawGeneratedCode);
+
+    // 4. 2단계: 실제 E2B 클라우드 샌드박스(MicroVM) 생성 및 코드 실행
+    let sandbox: any = null;
+    let stdoutLogs: string[] = [];
+    let stderrLogs: string[] = [];
+    const charts: string[] = [];
+
+    try {
+      const { Sandbox } = await import('@e2b/code-interpreter');
+      sandbox = await Sandbox.create({
+        apiKey: userE2bKey,
+        timeoutMs: 60_000,
+      });
+
+      const execution = await sandbox.runCode(pythonCode);
+
+      if (execution.logs?.stdout) stdoutLogs.push(...execution.logs.stdout);
+      if (execution.logs?.stderr) stderrLogs.push(...execution.logs.stderr);
+
+      if (execution.results && execution.results.length > 0) {
+        for (const res of execution.results) {
+          if (res.png) {
+            charts.push(`data:image/png;base64,${res.png}`);
+          } else if (res.svg) {
+            charts.push(`data:image/svg+xml;utf8,${encodeURIComponent(res.svg)}`);
+          }
+        }
+      }
+    } finally {
+      if (sandbox) {
+        try {
+          await sandbox.kill();
+        } catch (e) {
+          // ignore cleanup error
+        }
+      }
+    }
+
+    // 5. 3단계: E2B stdout 실행 결과를 LLM에 전달하여 한국어 인사이트 리포트 생성
+    const reportSystemPrompt = `You are a chief market strategist and quantitative financial analyst.
+You are given:
+1. The user's original query.
+2. The stdout execution output from running python data analysis in a cloud sandbox on 5 major stock indices (S&P 500, NASDAQ, Russell 2000, KOSPI, KOSDAQ).
+
+Write a clear, highly professional, insightful financial report in Korean (한국어).
+Use clean markdown headers (###), bullet points, and highlight key numbers in bold.
+Provide strategic interpretation, risk analysis, and actionable takeaways based strictly on the actual numbers returned from the sandbox.`;
+
+    const combinedOutput = stdoutLogs.join('\n');
+    const finalReport = await callLLM({
+      model,
+      apiKey: userModelKey,
+      systemPrompt: reportSystemPrompt,
+      userPrompt: `User Query: "${prompt}"\n\nExecution stdout results from E2B Sandbox:\n${combinedOutput || '(No stdout text, chart generated)'}`,
+    });
+
+    const executionTimeMs = Date.now() - startTime;
+
+    return NextResponse.json({
+      success: true,
+      isMock: false,
+      agentInsight: finalReport,
+      charts,
+      logs: {
+        stdout: stdoutLogs,
+        stderr: stderrLogs,
+      },
+      generatedCode: pythonCode,
+      executionTimeMs,
+      model,
+    });
   } catch (error: any) {
-    console.error('Agent analyze error:', error);
+    console.error('Agent execution error:', error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Analysis failed',
-        agentInsight: '분석 처리 중 에러가 발생했습니다.',
-        logs: { stdout: [], stderr: [String(error)] },
+        error: error.message || 'Execution error',
+        agentInsight: `### ❌ 실행 중 오류가 발생했습니다.\n\n${error.message || error}`,
         charts: [],
+        logs: { stdout: [], stderr: [String(error)] },
         generatedCode: '',
         executionTimeMs: 0,
       },
-      { status: 500 }
+      { status: 200 } // 프론트엔드에서 파싱할 수 있도록 200으로 반환
     );
   }
 }

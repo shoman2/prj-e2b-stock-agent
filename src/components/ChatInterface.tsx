@@ -31,7 +31,9 @@ import {
 interface ChatInterfaceProps {
   selectedModel: string;
   e2bApiKey?: string;
+  modelKeys: Record<string, string>;
   indices: IndexInfo[];
+  onOpenSettings: () => void;
 }
 
 const QUICK_SUGGESTIONS = [
@@ -64,7 +66,9 @@ const QUICK_SUGGESTIONS = [
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   selectedModel,
   e2bApiKey,
+  modelKeys,
   indices,
+  onOpenSettings,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -76,6 +80,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const currentModelInfo = AI_MODELS.find((m) => m.id === selectedModel) || AI_MODELS[0];
+  const currentModelKey = modelKeys[currentModelInfo.provider.toLowerCase()] || '';
+
+  const hasAllKeys = Boolean(e2bApiKey && e2bApiKey.trim() !== '' && currentModelKey && currentModelKey.trim() !== '');
 
   // 새 메시지 추가 시 스크롤 자동 이동
   const scrollToBottom = () => {
@@ -90,6 +97,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleSend = async (overridePrompt?: string, presetId?: string) => {
     const textToSend = (overridePrompt || input).trim();
     if (!textToSend || loading) return;
+
+    // 만약 API 키가 전혀 설정되어 있지 않다면 즉시 설정 모달을 열어주고 안내
+    if (!e2bApiKey || e2bApiKey.trim() === '' || !currentModelKey || currentModelKey.trim() === '') {
+      onOpenSettings();
+    }
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -108,12 +120,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: textToSend,
-          presetId,
+          model: currentModelInfo.id,
+          modelApiKey: currentModelKey,
           e2bApiKey: e2bApiKey || undefined,
         }),
       });
 
-      const data: ExecutionResult = await res.json();
+      const data = await res.json();
 
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -124,7 +137,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         logs: data.logs,
         executionTimeMs: data.executionTimeMs,
         model: currentModelInfo.name,
-        isMock: data.isMock,
+        isMock: false,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
@@ -207,8 +220,38 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               무엇을 분석해 드릴까요?
             </h1>
             <p style={{ fontSize: '0.92rem', color: '#9ca3af', lineHeight: 1.6, maxWidth: 540 }}>
-              선택하신 <strong>{currentModelInfo.name}</strong> 모델이 자연어 질문을 해석하여 Python 데이터 분석 코드를 작성하고, <strong>E2B 격리 샌드박스</strong>에서 5대 주가지수를 실시간 연산합니다.
+              선택하신 <strong>{currentModelInfo.name}</strong> 모델이 질문을 바탕으로 Python 데이터 분석 코드를 작성하고, <strong>E2B 클라우드 리눅스 MicroVM</strong>에서 5대 주가지수를 직접 연산합니다.
             </p>
+
+            {/* Key Missing Banner */}
+            {!hasAllKeys && (
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                borderRadius: 'var(--radius-md)',
+                padding: '12px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                width: '100%',
+                maxWidth: 620,
+                marginTop: 8
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} />
+                  <span style={{ fontSize: '0.82rem', color: '#fcd34d', fontWeight: 600 }}>
+                    실제 AI 에이전트와 E2B MicroVM을 실행하려면 API Key 등록이 필요합니다.
+                  </span>
+                </div>
+                <button
+                  onClick={onOpenSettings}
+                  className="btn-primary"
+                  style={{ padding: '4px 12px', fontSize: '0.75rem', background: '#d97706' }}
+                >
+                  키 입력하기
+                </button>
+              </div>
+            )}
 
             {/* Quick Suggestion Chips */}
             <div style={{

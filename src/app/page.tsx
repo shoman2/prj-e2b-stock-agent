@@ -12,13 +12,21 @@ export default function HomePage() {
   const [selectedModel, setSelectedModel] = useState<string>('gpt-4o');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [e2bKey, setE2bKey] = useState<string>('');
+  const [modelKeys, setModelKeys] = useState<Record<string, string>>({});
 
   // 클라이언트 저장소에서 이전 설정 불러오기
   useEffect(() => {
     const storedE2bKey = localStorage.getItem('e2b_api_key') || '';
     const storedModel = localStorage.getItem('selected_model') || 'gpt-4o';
+    const storedModelKeys = localStorage.getItem('model_api_keys');
+
     setE2bKey(storedE2bKey);
     setSelectedModel(storedModel);
+    if (storedModelKeys) {
+      try {
+        setModelKeys(JSON.parse(storedModelKeys));
+      } catch (e) {}
+    }
 
     // 지수 요약 데이터 로드
     fetch('/api/indices/summary')
@@ -38,9 +46,11 @@ export default function HomePage() {
     localStorage.setItem('selected_model', modelId);
   };
 
-  const handleSaveKeys = ({ e2bKey: newKey }: { e2bKey: string; modelKeys: Record<string, string> }) => {
+  const handleSaveKeys = ({ e2bKey: newKey, modelKeys: newModelKeys }: { e2bKey: string; modelKeys: Record<string, string> }) => {
     setE2bKey(newKey);
+    setModelKeys(newModelKeys);
     localStorage.setItem('e2b_api_key', newKey);
+    localStorage.setItem('model_api_keys', JSON.stringify(newModelKeys));
   };
 
   return (
@@ -60,7 +70,9 @@ export default function HomePage() {
         <ChatInterface
           selectedModel={selectedModel}
           e2bApiKey={e2bKey}
+          modelKeys={modelKeys}
           indices={indices}
+          onOpenSettings={() => setIsSettingsOpen(true)}
         />
       </main>
 
