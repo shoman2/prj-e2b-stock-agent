@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   ChatMessage,
   IndexInfo,
@@ -447,9 +449,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     </details>
                   )}
 
-                  {/* Assistant: Report Content */}
-                  <div className="markdown-body" style={{ whiteSpace: 'pre-line' }}>
-                    {msg.content}
+                  {/* Message Content: ReactMarkdown with GFM */}
+                  <div className="markdown-body">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </ReactMarkdown>
                   </div>
 
                   {/* Assistant: Generated Chart Image */}
